@@ -1,0 +1,18 @@
+# 部署配置（Render / Railway 等平台可直接使用）
+#
+# Render：New + → Web Service → 连接代码仓库后，平台会自动识别本文件，
+#         或者手动填写 build / start 命令（见下方 startCommand）。
+# 注意：免费实例只有 512MB 内存，pandas + numpy + scipy 单进程约 250MB，
+#      所以 workers 保持 1，用 gthread worker + 4 线程提供并发，避免 OOM 导致 502。
+services:
+  - type: web
+    name: pandaviz-studio
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn "backend.app:create_app()" --bind 0.0.0.0:$PORT --worker-class gthread --workers 1 --threads 4 --timeout 120
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: PYTHONIOENCODING
+        value: utf-8

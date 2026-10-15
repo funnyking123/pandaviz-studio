@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PandasViz Studio · 可视化 pandas 数据分析工作台</title>
+<link rel="stylesheet" href="/assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='78' font-size='76'>🐼</text></svg>">
+</head>
+<body data-theme="dark">
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-logo">🐼</div>
+    <div class="brand-text">
+      <h1>PandasViz Studio</h1>
+      <p data-i18n="brand.sub">可视化 pandas 数据分析工作台</p>
+    </div>
+  </div>
+
+  <div class="topbar-center">
+    <label class="field inline">
+      <span data-i18n="dataset.label">数据集</span>
+      <select id="dataset-select" class="control"></select>
+    </label>
+    <button class="btn ghost" id="btn-upload" data-i18n-title="upload.hint">
+      <span class="ico">⬆</span><span data-i18n="upload.button">加载数据</span>
+    </button>
+    <input type="file" id="file-input" accept=".csv,.tsv,.txt,.json,.jsonl,.ndjson,.xlsx,.xls" hidden>
+    <button class="btn ghost" id="btn-dataset-info"><span class="ico">ⓘ</span><span data-i18n="dataset.info">数据概览</span></button>
+  </div>
+
+  <div class="topbar-right">
+    <div class="seg" id="lang-switch">
+      <button class="seg-btn is-active" data-lang="zh">中</button>
+      <button class="seg-btn" data-lang="en">EN</button>
+    </div>
+    <button class="btn icon" id="btn-theme" data-i18n-title="theme.toggle">🌙</button>
+    <div class="dropdown">
+      <button class="btn primary" id="btn-export"><span class="ico">⤓</span><span data-i18n="export.button">导出</span></button>
+      <div class="dropdown-menu" id="export-menu">
+        <button data-export="csv" data-i18n="export.csv">清洗后数据 (CSV)</button>
+        <button data-export="xlsx" data-i18n="export.xlsx">清洗后数据 (Excel)</button>
+        <button data-export="script" data-i18n="export.script">pandas 分析脚本 (.py)</button>
+        <button data-export="report" data-i18n="export.report">分析报告 (.md)</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ======================= 左侧：可视化管道 ======================= -->
+  <aside class="sidebar" id="sidebar">
+    <div class="panel-head">
+      <div>
+        <h2 data-i18n="pipeline.title">分析管道</h2>
+        <p class="muted small" data-i18n="pipeline.sub">点击算子即可添加一步，图表与代码实时更新</p>
+      </div>
+      <button class="btn tiny ghost" id="btn-clear-steps" data-i18n="pipeline.clear">清空</button>
+    </div>
+
+    <div class="sidebar-scroll">
+      <section class="block">
+        <h3 class="block-title" data-i18n="pipeline.ops">算子库</h3>
+        <div id="op-palette" class="op-palette"></div>
+      </section>
+
+      <section class="block">
+        <h3 class="block-title">
+          <span data-i18n="pipeline.steps">操作步骤</span>
+          <span class="badge" id="step-count">0</span>
+        </h3>
+        <div id="step-list" class="step-list"></div>
+        <p class="empty-hint" id="step-empty" data-i18n="pipeline.empty">还没有任何步骤，数据保持原样。点击上方算子开始清洗与分析。</p>
+      </section>
+
+      <section class="block">
+        <h3 class="block-title" data-i18n="pipeline.funnel">数据量漏斗</h3>
+        <div class="chart-box sm" id="funnel-chart"></div>
+        <p class="muted small" id="funnel-note"></p>
+      </section>
+
+      <section class="block">
+        <h3 class="block-title" data-i18n="pipeline.preview">步骤预览</h3>
+        <div id="step-preview" class="mini-table-wrap"></div>
+      </section>
+    </div>
+  </aside>
+
+  <!-- ======================= 右侧：视图区 ======================= -->
+  <section class="content">
+    <nav class="tabs" id="tabs">
+      <button class="tab is-active" data-tab="chart" data-i18n="tab.chart">图表工作室</button>
+      <button class="tab" data-tab="table" data-i18n="tab.table">数据表</button>
+      <button class="tab" data-tab="profile" data-i18n="tab.profile">质量画像</button>
+      <button class="tab" data-tab="relation" data-i18n="tab.relation">关系分析</button>
+      <button class="tab" data-tab="pivot" data-i18n="tab.pivot">透视表</button>
+      <button class="tab" data-tab="timeseries" data-i18n="tab.timeseries">时间序列</button>
+      <button class="tab" data-tab="stats" data-i18n="tab.stats">统计检验</button>
+      <button class="tab" data-tab="insights" data-i18n="tab.insights">自动洞察</button>
+      <button class="tab" data-tab="code" data-i18n="tab.code">pandas 代码</button>
+    </nav>
+
+    <div class="statusbar">
+      <span class="chip" id="chip-shape">—</span>
+      <span class="chip" id="chip-dataset">—</span>
+      <span class="chip" id="chip-pandas">—</span>
+      <span class="chip" id="chip-steps">—</span>
+      <span class="chip ok hidden" id="chip-error"></span>
+      <span class="spacer"></span>
+      <span class="chip" id="chip-latency">—</span>
+    </div>
+
+    <div class="views">
+      <!-- 图表工作室 -->
+      <div class="view is-active" data-view="chart">
+        <div class="builder">
+          <div class="builder-controls" id="chart-controls"></div>
+          <div class="builder-chart">
+            <div class="panel-head compact">
+              <h3 id="chart-title" data-i18n="chart.title">图表</h3>
+              <div class="row gap">
+                <button class="btn tiny ghost" id="btn-chart-png" data-i18n="chart.png">导出 PNG</button>
+                <button class="btn tiny ghost" id="btn-chart-refresh" data-i18n="chart.refresh">重绘</button>
+              </div>
+            </div>
+            <div id="chart-warnings" class="warnings"></div>
+            <div class="chart-box lg" id="main-chart"></div>
+          </div>
+        </div>
+        <div class="split">
+          <div class="card">
+            <h3 class="block-title" data-i18n="chart.code">图形对应的 pandas 代码</h3>
+            <pre class="code" id="chart-code"></pre>
+          </div>
+          <div class="card">
+            <h3 class="block-title" data-i18n="chart.hintTitle">可视化提示</h3>
+            <div id="chart-hints" class="hints"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据表 -->
+      <div class="view" data-view="table">
+        <div class="table-toolbar">
+          <input class="control" id="table-search" placeholder="搜索任意字段…" data-i18n-placeholder="table.search">
+          <label class="field inline">
+            <span data-i18n="table.pageSize">每页</span>
+            <select id="table-limit" class="control sm">
+              <option>25</option><option selected>50</option><option>100</option><option>200</option>
+            </select>
+          </label>
+          <span class="spacer"></span>
+          <span class="muted small" id="table-info"></span>
+          <button class="btn tiny ghost" id="table-prev" data-i18n="table.prev">上一页</button>
+          <button class="btn tiny ghost" id="table-next" data-i18n="table.next">下一页</button>
+        </div>
+        <div class="table-wrap" id="data-table"></div>
+        <div class="card">
+          <h3 class="block-title" data-i18n="table.stats">列统计（与 describe() 一致）</h3>
+          <div class="table-wrap" id="column-stats"></div>
+        </div>
+      </div>
+
+      <!-- 质量画像 -->
+      <div class="view" data-view="profile">
+        <div class="grid-3">
+          <div class="card gauge-card">
+            <h3 class="block-title" data-i18n="profile.score">数据质量分</h3>
+            <div class="chart-box md" id="quality-gauge"></div>
+            <div id="quality-grade" class="grade"></div>
+          </div>
+          <div class="card span-2">
+            <h3 class="block-title" data-i18n="profile.summary">概览</h3>
+            <div class="kpis" id="profile-kpis"></div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h3 class="block-title" data-i18n="profile.missingBar">缺失率排行</h3>
+            <div class="chart-box md" id="missing-bar"></div>
+          </div>
+          <div class="card">
+            <h3 class="block-title" data-i18n="profile.missingMatrix">缺失值矩阵（采样）</h3>
+            <div class="chart-box md" id="missing-matrix"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="block-title" data-i18n="profile.distributions">数值列分布</h3>
+          <div class="spark-grid" id="spark-grid"></div>
+        </div>
+        <div class="card">
+          <h3 class="block-title" data-i18n="profile.columns">字段详情</h3>
+          <div class="table-wrap" id="profile-columns"></div>
+        </div>
+      </div>
+
+      <!-- 关系分析 -->
+      <div class="view" data-view="relation">
+        <div class="table-toolbar">
+          <label class="field inline">
+            <span data-i18n="relation.method">相关系数</span>
+            <select id="corr-method" class="control sm">
+              <option value="pearson">Pearson</option>
+              <option value="spearman">Spearman</option>
+              <option value="kendall">Kendall</option>
+            </select>
+          </label>
+          <label class="field inline">
+            <span data-i18n="relation.view">视图</span>
+            <select id="relation-view" class="control sm">
+              <option value="corr" data-i18n="relation.corr">相关性热力图</option>
+              <option value="matrix" data-i18n="relation.scatter">散点矩阵</option>
+              <option value="parallel" data-i18n="relation.parallel">平行坐标</option>
+            </select>
+          </label>
+          <span class="spacer"></span>
+          <span class="muted small" id="corr-info"></span>
+        </div>
+        <div class="chart-box xl" id="relation-chart"></div>
+        <div class="split">
+          <div class="card">
+            <h3 class="block-title" data-i18n="relation.topPairs">最强相关对</h3>
+            <div class="table-wrap" id="corr-pairs"></div>
+          </div>
+          <div class="card">
+            <h3 class="block-title" data-i18n="relation.code">对应 pandas 代码</h3>
+            <pre class="code" id="corr-code"></pre>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="block-title" data-i18n="chart.hintTitle">可视化提示</h3>
+          <div class="hints" id="relation-hints"></div>
+        </div>
+      </div>
+
+      <!-- 透视表 -->
+      <div class="view" data-view="pivot">
+        <div class="form-bar" id="pivot-controls"></div>
+        <div class="chart-box xl" id="pivot-chart"></div>
+        <div class="split">
+          <div class="card">
+            <h3 class="block-title" data-i18n="pivot.code">对应 pandas 代码</h3>
+            <pre class="code" id="pivot-code"></pre>
+          </div>
+          <div class="card">
+            <h3 class="block-title" data-i18n="pivot.hintTitle">怎么读这张热力图</h3>
+            <div class="hints" id="pivot-hints"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 时间序列 -->
+      <div class="view" data-view="timeseries">
+        <div class="form-bar" id="ts-controls"></div>
+        <div class="chart-box xl" id="ts-chart"></div>
+        <div class="split">
+          <div class="card">
+            <h3 class="block-title" data-i18n="ts.trend">趋势诊断</h3>
+            <div id="ts-trend" class="hints"></div>
+          </div>
+          <div class="card">
+            <h3 class="block-title" data-i18n="ts.code">对应 pandas 代码</h3>
+            <pre class="code" id="ts-code"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计检验 -->
+      <div class="view" data-view="stats">
+        <div class="form-bar" id="stats-controls"></div>
+        <div class="grid-2">
+          <div class="card" id="stats-result-card">
+            <h3 class="block-title" data-i18n="stats.result">检验结果</h3>
+            <div class="kpis" id="stats-result"></div>
+            <div id="stats-conclusion" class="conclusion"></div>
+          </div>
+          <div class="card">
+            <h3 class="block-title" data-i18n="stats.distribution">组间分布对比</h3>
+            <div class="chart-box md" id="stats-chart"></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="block-title" data-i18n="stats.groups">分组描述统计</h3>
+          <div class="table-wrap" id="stats-groups"></div>
+        </div>
+        <div class="card">
+          <h3 class="block-title" data-i18n="stats.code">对应 pandas / scipy 代码</h3>
+          <pre class="code" id="stats-code"></pre>
+        </div>
+      </div>
+
+      <!-- 自动洞察 -->
+      <div class="view" data-view="insights">
+        <div class="insight-head">
+          <div class="card health-card">
+            <h3 class="block-title" data-i18n="insights.health">洞察健康度</h3>
+            <div class="chart-box sm" id="insight-gauge"></div>
+          </div>
+          <div class="muted" data-i18n="insights.tip">每条洞察都由真实 pandas 统计得出，点击卡片可直接跳转到对应可视化。</div>
+        </div>
+        <div class="insight-list" id="insight-list"></div>
+      </div>
+
+      <!-- 代码 -->
+      <div class="view" data-view="code">
+        <div class="split wide-left">
+          <div class="card">
+            <div class="panel-head compact">
+              <h3 data-i18n="code.pipeline">管道代码（逐步生成）</h3>
+              <button class="btn tiny ghost" id="btn-copy-pipeline" data-i18n="code.copy">复制</button>
+            </div>
+            <pre class="code tall" id="code-pipeline"></pre>
+          </div>
+          <div class="card">
+            <div class="panel-head compact">
+              <h3 data-i18n="code.script">完整可运行脚本</h3>
+              <button class="btn tiny ghost" id="btn-copy-script" data-i18n="code.copy">复制</button>
+            </div>
+            <pre class="code tall" id="code-script"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- 模态框：数据概览 / 上传选项 -->
+<div class="modal-backdrop hidden" id="modal-backdrop">
+  <div class="modal" id="modal">
+    <div class="modal-head">
+      <h2 id="modal-title">—</h2>
+      <button class="btn icon ghost" id="modal-close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-foot" id="modal-foot"></div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<div class="loading hidden" id="loading"><div class="spinner"></div><span data-i18n="common.loading">计算中…</span></div>
+
+<script src="/vendor/echarts.min.js"></script>
+<script type="module" src="/assets/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# PandasViz Studio 依赖（Python 3.9+）
+# 本地安装： pip install -r requirements.txt
+pandas>=1.5.0
+numpy>=1.23.0
+Flask>=2.0.0
+Jinja2>=3.0.0
+Werkzeug>=2.0.0
+# 可选但推荐：KDE 密度估计、t 检验 / ANOVA / 卡方 / 正态性检验
+scipy>=1.9.0
+# 可选：Excel (.xlsx) 导入导出
+openpyxl>=3.0.0
+# 生产环境（Render / Railway 等 Linux 平台）需要的 WSGI 服务器；
+# Windows 本地会自动跳过这一行，不影响你双击 启动网站.bat。
+gunicorn>=21.0.0; sys_platform != "win32"

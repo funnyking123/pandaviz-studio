@@ -1,0 +1,132 @@
+"""导出：把当前分析结果导出为 CSV / Excel / pandas 脚本 / Markdown 报告。"""
+from __future__ import annotations
+
+import io
+from datetime import datetime
+
+import pandas as pd
+
+from .utils import to_native
+
+
+def to_csv_bytes(df: pd.DataFrame) -> bytes:
+    buffer = io.StringIO()
+    df.to_csv(buffer, index=False)
+    return ("\ufeff" + buffer.getvalue()).encode("utf-8")
+
+
+def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "result") -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.head(200000).to_excel(writer, index=False, sheet_name=sheet_name[:30] or "result")
+    return buffer.getvalue()
+
+
+def _md_table(rows: list[list], header: list[str]) -> str:
+    if not rows:
+        return "_(empty)_"
+    lines = ["| " + " | ".join(str(h) for h in header) + " |", "|" + "---|" * len(header)]
+    for row in rows:
+        lines.append("| " + " | ".join("" if v is None else str(v) for v in row) + " |")
+    return "\n".join(lines)
+
+
+def build_report_markdown(
+    dataset: dict,
+    pipeline: dict,
+    profile: dict | None = None,
+    insights: dict | None = None,
+    charts: list[dict] | None = None,
+    lang: str = "zh",
+) -> str:
+    zh = lang != "en"
+
+    def t(cn: str, en: str) -> str:
+        return cn if zh else en
+
+    meta_name = (dataset.get("name") or {}).get("zh" if zh else "en") or dataset.get("id")
+    lines: list[str] = []
+    lines.append(f"# {t('分析报告', 'Analysis Report')} · {meta_name}")
+    lines.append("")
+    lines.append(f"- {t('生成时间', 'Generated at')}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    lines.append(f"- {t('数据集', 'Dataset')}: `{dataset.get('id')}`（{dataset.get('rows'):,} {t('行', 'rows')} × {dataset.get('cols')} {t('列', 'cols')}）")
+    lines.append(f"- {t('管道步骤', 'Pipeline steps')}: {len(pipeline.get('steps') or [])}")
+    lines.append(f"- {t('结果规模', 'Result size')}: {pipeline.get('rows'):,} {t('行', 'rows')} × {pipeline.get('cols')} {t('列', 'cols')}")
+    lines.append("")
+
+    lines.append(f"## {t('分析管道（pandas 代码）', 'Pipeline (pandas code)')}")
+    lines.append("")
+    lines.append("```python")
+    code_lines = [step.get("code", "") for step in (pipeline.get("steps") or []) if step.get("status") == "ok"]
+    lines.append("\n\n".join(code_lines) if code_lines else "# (无步骤)")
+    lines.append("```")
+    lines.append("")
+
+    lines.append(f"## {t('每步数据量变化', 'Row counts per step')}")
+    lines.append("")
+    steps = pipeline.get("steps") or []
+    header = [t("步骤", "Step"), t("算子", "Operator"), t("行数", "Rows"), t("列数", "Cols"), t("耗时(ms)", "Elapsed (ms)")]
+    rows = [
+        [index + 1, (step.get("label") or {}).get("zh" if zh else "en") or step.get("id"), step.get("rows"), step.get("cols"), step.get("elapsed_ms")]
+        for index, step in enumerate(steps)
+    ]
+    lines.append(_md_table(rows, header))
+    lines.append("")
+
+    if profile:
+        summary = profile.get("summary") or {}
+        lines.append(f"## {t('数据质量', 'Data Quality')}")
+        lines.append("")
+        lines.append(
+            _md_table(
+                [
+                    [t("质量评分", "Quality score"), summary.get("quality_score")],
+                    [t("缺失单元格", "Missing cells"), f"{summary.get('missing_cells'):,} ({float(summary.get('missing_rate') or 0):.2%})"],
+                    [t("重复行", "Duplicated rows"), summary.get("duplicated_rows")],
+                    [t("数值列", "Numeric columns"), summary.get("numeric_cols")],
+                    [t("时间列", "Datetime columns"), summary.get("datetime_cols")],
+                    [t("类别列", "Categorical columns"), summary.get("categorical_cols")],
+                ],
+                [t("指标", "Metric"), t("数值", "Value")],
+            )
+        )
+        lines.append("")
+
+    if insights and insights.get("insights"):
+        lines.append(f"## {t('自动洞察', 'Automated Insights')}")
+        lines.append("")
+        for index, item in enumerate(insights["insights"], 1):
+            title = (item.get("title") or {}).get("zh" if zh else "en")
+            detail = (item.get("detail") or {}).get("zh" if zh else "en")
+            lines.append(f"{index}. **{title}** — {detail}")
+        lines.append("")
+
+    for chart in charts or []:
+        lines.append(f"## {t('图表', 'Chart')}: {chart.get('title')}")
+        lines.append("")
+        axis = chart.get("axis") or {}
+        lines.append(
+            f"- {t('类型', 'Type')}: `{chart.get('type')}`；X: `{axis.get('x')}`；Y: `{axis.get('y')}`；"
+            f"{t('聚合', 'Agg')}: `{axis.get('agg')}`"
+        )
+        lines.append(f"- {t('系列数', 'Series')}: {len(chart.get('series') or [])}，{t('类别数', 'Categories')}: {len(chart.get('categories') or [])}")
+        lines.append("")
+        lines.append("```python")
+        lines.append(chart.get("code") or "")
+        lines.append("```")
+        lines.append("")
+
+    lines.append("---")
+    lines.append(t("由 PandasViz Studio 生成：所有图形均由后端真实 pandas 计算驱动。", "Generated by PandasViz Studio — every figure is driven by real pandas computation."))
+    return "\n".join(lines)
+
+
+def export_summary(dataset: dict, pipeline: dict) -> dict:
+    return to_native(
+        {
+            "dataset": dataset.get("id"),
+            "rows": pipeline.get("rows"),
+            "cols": pipeline.get("cols"),
+            "steps": len(pipeline.get("steps") or []),
+        }
+    )
